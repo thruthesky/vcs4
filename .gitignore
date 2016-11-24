@@ -1,0 +1,13 @@
+.vscode
+node_modules
+*.tar.gz
+lib-cov
+.*.swp
+._*
+.DS_Store
+.git
+.hg
+.npmrc
+.lock-wscript
+.wafpickle-*
+*.log
