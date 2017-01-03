@@ -22,6 +22,7 @@ class VideoCenterServer {
     private io: any;
     private whiteboard_line_history :Array<any>;//All the whiteboard history will go here
     public users = {};
+    private whiteboard_settings = {}; // @display:boolean @image_url:string
     
     constructor() {        
         console.log("VideoCenterServer::constructor() ...");
@@ -62,13 +63,13 @@ class VideoCenterServer {
             this.logout( socket, callback );
         } );
         socket.on('user-list', ( roomname: string, callback: any ) => {    
-             this.userList( socket, roomname, callback );
+            this.userList( socket, roomname, callback );
         } );
         socket.on('room-list', ( callback: any ) => {    
-             this.roomList( socket, callback );
+            this.roomList( socket, callback );
         } );
-        socket.on('whiteboard', data => { 
-            this.whiteboard( socket, data )
+        socket.on('whiteboard', (data, callback: any ) => { 
+            this.whiteboard( socket, data, callback )
         } );
         socket.on('room-cast', data => { 
             socket.broadcast.to( data.roomname ).emit('room-cast', data);
@@ -80,56 +81,151 @@ class VideoCenterServer {
 
         
     }
-    private whiteboard( socket, data ) {
+    private whiteboard( socket, data, callback ) {
         if ( data.command == 'draw' ) this.whiteboardDraw( socket, data );
         else if ( data.command == 'clear' ) this.whiteboardClear( socket, data );
-        else if ( data.command == 'history' ) this.whiteboardHistory( socket, data );
+        else if ( data.command == 'history' ) this.whiteboardHistory( socket, data, callback );
+        else if ( data.command == 'settings' ) this.whiteboardSettings( socket, data, callback );
+        else if ( data.command == 'show-whiteboard' ) this.settingsWhiteboardShow( socket, data, callback );
+        else if ( data.command == 'hide-whiteboard' ) this.settingsWhiteboardHide( socket, data );
+        else if ( data.command == 'canvas-size' ) this.settingsWhiteboardSize( socket, data );
+        else if ( data.command == 'change-image' ) this.settingsWhiteboardImageUrl( socket, data );
+        
         else {
             let user = this.getUser( socket );
             socket.broadcast.to( user.room ).emit('whiteboard', data);
         }
+        if( this.excludedWhiteboardCallback(data) ) callback( data );
+    }
+    private excludedWhiteboardCallback( data ) {
+        return data.command != 'settings' || data.command != 'show-whiteboard';
     }
     private whiteboardDraw( socket, data ) {
-            try { 
-                 // add received line to history     
-                if (typeof this.whiteboard_line_history[data.room_name] == "undefined")this.whiteboard_line_history[data.room_name] = [data];         
-                else this.whiteboard_line_history[data.room_name].push(data);
-                // send line to all clients
-                socket.broadcast.to( data.room_name ).emit('whiteboard', data);
-            }
-            catch ( e ) {
-                //send error message
-                socket.emit( 'error', 'socket.on("whiteboard") Cause: ' + this.get_error_message( e ) );
-                
-            }
-
+        try { 
+            // add received line to history     
+            if (typeof this.whiteboard_line_history[data.room_name] == "undefined")this.whiteboard_line_history[data.room_name] = [data];         
+            else this.whiteboard_line_history[data.room_name].push(data);
+            // send line to all clients
+            socket.broadcast.to( data.room_name ).emit('whiteboard', data);
+        }
+        catch ( e ) {
+            //send error message
+            socket.emit( 'error', 'socket.on("whiteboard") Cause: ' + this.get_error_message( e ) );
+            
+        }
 
     }
     private whiteboardClear( socket, data ) {
         let roomname = data.room_name;
+        this.io.in( roomname ).emit('whiteboard', data);
+        try{
+            delete this.whiteboard_line_history[roomname];                
+        }
+        catch ( e ) {
+            socket.emit( 'error', 'socket.on("whiteboard-clear") Cause: ' + this.get_error_message( e ) );
+        }
+    }
+    private whiteboardDeleteSettings( socket, data ) {
+        let roomname = data.room_name;
+        try{
+            delete this.whiteboard_settings[roomname];                
+        }
+        catch ( e ) {
+            socket.emit( 'error', 'socket.on("whiteboardDeleteSettings") Cause: ' + this.get_error_message( e ) );
+        }
+    }
+    private whiteboardHistory( socket, data, callback ) {
 
-            this.io.in( roomname ).emit('whiteboard', data);
-            try{
-                delete this.whiteboard_line_history[roomname];                
+        console.log("get-whiteboard-draw-line-history");
+        try {
+            let lines:any = this.whiteboard_line_history[ data.room_name ];
+            for (let i in lines ) {
+                if ( ! lines.hasOwnProperty(i) ) continue;
+                let data = lines[i];
+                socket.emit('whiteboard', data );
+            }  
+        }
+        catch ( e ) {
+            socket.emit( 'error', 'socket.on("get-whiteboard-draw-line-history") Cause: ' + this.get_error_message( e ) );
+        }
+
+    }
+    private whiteboardSettings( socket, data, callback ) {
+            console.log("whiteboardSettings");
+            try {
+                if (typeof this.whiteboard_settings[ data.room_name ] == "undefined")
+                {
+                    this.whiteboard_settings[ data.room_name ] = {};         
+                    this.whiteboard_settings[ data.room_name ].display = false;
+                    this.whiteboard_settings[ data.room_name ].size = 'small';
+                    this.whiteboard_settings[ data.room_name ].image_url = '../../assets/img/default.png';
+                }
+                callback(this.whiteboard_settings[ data.room_name ]);
+                let user = this.getUser( socket );
+                socket.broadcast.to( user.room ).emit('whiteboard', data);
             }
             catch ( e ) {
-                socket.emit( 'error', 'socket.on("whiteboard-clear") Cause: ' + this.get_error_message( e ) );
+                socket.emit( 'error', 'socket.on("whiteboardSettings") Cause: ' + this.get_error_message( e ) );
             }
 
     }
-    private whiteboardHistory( socket, data ) {
-
-            console.log("get-whiteboard-draw-line-history");
+    private settingsWhiteboardSize( socket, data ) {
+        console.log("settingsWhiteboardSize");
+        try {
+            if (typeof this.whiteboard_settings[ data.room_name ] == "undefined")this.whiteboard_settings[ data.room_name ] = {};         
+            this.whiteboard_settings[ data.room_name ].size = data.size;
+            let user = this.getUser( socket );
+            socket.broadcast.to( user.room ).emit('whiteboard', data);
+        }
+        catch ( e ) {
+            socket.emit( 'error', 'socket.on("settingsWhiteboardSize") Cause: ' + this.get_error_message( e ) );
+        }
+    }
+    private settingsWhiteboardImageUrl( socket, data ) {
+        console.log("settingsWhiteboardImageUrl");
+        try {
+            if (typeof this.whiteboard_settings[ data.room_name ] == "undefined")this.whiteboard_settings[ data.room_name ] = {};         
+            this.whiteboard_settings[ data.room_name ].image_url = data.image_url;
+            let user = this.getUser( socket );
+            socket.broadcast.to( user.room ).emit('whiteboard', data);
+        }
+        catch ( e ) {
+            socket.emit( 'error', 'socket.on("settingsWhiteboardImageUrl") Cause: ' + this.get_error_message( e ) );
+        }
+    }
+    private settingsWhiteboardShow( socket, data, callback ) {
+            console.log("settingsWhiteboardShow");
             try {
-                let lines:any = this.whiteboard_line_history[ data.room_name ];
-                for (let i in lines ) {
-                    if ( ! lines.hasOwnProperty(i) ) continue;
-                    let data = lines[i];
-                    socket.emit('whiteboard', data );
-                }  
+                if (typeof this.whiteboard_settings[ data.room_name ] == "undefined") this.whiteboard_settings[ data.room_name ] = {};         
+                
+                if (typeof this.whiteboard_settings[ data.room_name ] == "undefined")
+                {
+                    this.whiteboard_settings[ data.room_name ] = {};         
+                    this.whiteboard_settings[ data.room_name ].display = false;
+                    this.whiteboard_settings[ data.room_name ].size = 'small';
+                    this.whiteboard_settings[ data.room_name ].image_url = '../../assets/img/default.png';
+                }
+                callback(this.whiteboard_settings[ data.room_name ]);
+                this.whiteboard_settings[ data.room_name ].display = true;
+                let user = this.getUser( socket );
+                data.image_url = this.whiteboard_settings[ data.room_name ].image_url;
+                socket.broadcast.to( user.room ).emit('whiteboard', data);
             }
             catch ( e ) {
-                socket.emit( 'error', 'socket.on("get-whiteboard-draw-line-history") Cause: ' + this.get_error_message( e ) );
+                socket.emit( 'error', 'socket.on("settingsWhiteboardShow") Cause: ' + this.get_error_message( e ) );
+            }
+
+    }
+    private settingsWhiteboardHide( socket, data ) {
+            console.log("settingsWhiteboardHide");
+            try {
+                if (typeof this.whiteboard_settings[ data.room_name ] == "undefined") this.whiteboard_settings[ data.room_name ] = {};         
+                this.whiteboard_settings[ data.room_name ].display = false;
+                let user = this.getUser( socket );
+                socket.broadcast.to( user.room ).emit('whiteboard', data);
+            }
+            catch ( e ) {
+                socket.emit( 'error', 'socket.on("settingsWhiteboardHide") Cause: ' + this.get_error_message( e ) );
             }
 
     }
@@ -255,6 +351,7 @@ class VideoCenterServer {
             let data :any = { room_name : user.room };
             data.command = "clear";
             this.whiteboardClear( socket, data );
+            this.whiteboardDeleteSettings( socket, data );
             callback();
         }
         
@@ -336,10 +433,6 @@ class VideoCenterServer {
     private userList( socket: any, roomname: string,  callback: any ) {                      
         let users;
         if ( roomname ) {
-            /**
-             * @attention I can use 'this.user' but i did it for experimental.
-             * 
-             */
             users = this.get_room_users( roomname );
         }
         else {
