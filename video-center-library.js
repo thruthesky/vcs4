@@ -70,6 +70,8 @@ var VideoCenterServer = (function () {
     VideoCenterServer.prototype.whiteboard = function (socket, data, callback) {
         if (data.command == 'draw')
             this.whiteboardDraw(socket, data);
+        else if (data.command == 'whiteboard-textarea')
+            this.whiteboardTextArea(socket, data);
         else if (data.command == 'clear')
             this.whiteboardClear(socket, data);
         else if (data.command == 'history')
@@ -95,6 +97,21 @@ var VideoCenterServer = (function () {
         return data.command != 'settings' || data.command != 'show-whiteboard';
     };
     VideoCenterServer.prototype.whiteboardDraw = function (socket, data) {
+        try {
+            // add received line to history     
+            if (typeof this.whiteboard_line_history[data.room_name] == "undefined")
+                this.whiteboard_line_history[data.room_name] = [data];
+            else
+                this.whiteboard_line_history[data.room_name].push(data);
+            // send line to all clients
+            socket.broadcast.to(data.room_name).emit('whiteboard', data);
+        }
+        catch (e) {
+            //send error message
+            socket.emit('error', 'socket.on("whiteboard") Cause: ' + this.get_error_message(e));
+        }
+    };
+    VideoCenterServer.prototype.whiteboardTextArea = function (socket, data) {
         try {
             // add received line to history     
             if (typeof this.whiteboard_line_history[data.room_name] == "undefined")

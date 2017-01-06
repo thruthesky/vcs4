@@ -83,6 +83,7 @@ class VideoCenterServer {
     }
     private whiteboard( socket, data, callback ) {
         if ( data.command == 'draw' ) this.whiteboardDraw( socket, data );
+        else if ( data.command == 'whiteboard-textarea' ) this.whiteboardTextArea( socket, data );
         else if ( data.command == 'clear' ) this.whiteboardClear( socket, data );
         else if ( data.command == 'history' ) this.whiteboardHistory( socket, data, callback );
         else if ( data.command == 'settings' ) this.whiteboardSettings( socket, data, callback );
@@ -113,8 +114,22 @@ class VideoCenterServer {
             socket.emit( 'error', 'socket.on("whiteboard") Cause: ' + this.get_error_message( e ) );
             
         }
-
     }
+    private whiteboardTextArea( socket, data ) {
+        try { 
+            // add received line to history     
+            if (typeof this.whiteboard_line_history[data.room_name] == "undefined")this.whiteboard_line_history[data.room_name] = [data];         
+            else this.whiteboard_line_history[data.room_name].push(data);
+            // send line to all clients
+            socket.broadcast.to( data.room_name ).emit('whiteboard', data);
+        }
+        catch ( e ) {
+            //send error message
+            socket.emit( 'error', 'socket.on("whiteboard") Cause: ' + this.get_error_message( e ) );
+            
+        }
+    }
+    
     private whiteboardClear( socket, data ) {
         let roomname = data.room_name;
         this.io.in( roomname ).emit('whiteboard', data);
