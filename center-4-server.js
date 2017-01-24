@@ -15,6 +15,7 @@ var server = require(isUseHTTPs ? 'https' : 'http'),
     fs = require('fs');
 
 function serverHandler(request, response) {
+console.log("new http(s) connection: ");
     try {
         var uri = url.parse(request.url).pathname,
             filename = path.join(process.cwd(), uri);
@@ -47,8 +48,8 @@ if (isUseHTTPs) {
     var options = {
         //key: fs.readFileSync(path.join(__dirname, 'fake-keys/privatekey.pem')),
         //cert: fs.readFileSync(path.join(__dirname, 'fake-keys/certificate.pem'))
-        key: fs.readFileSync('ssl/videocenter_co_kr.key'),
-        cert: fs.readFileSync('ssl/videocenter_co_kr.crt-ca-bundle')
+        key: fs.readFileSync('ssl/private.key'),
+        cert: fs.readFileSync('ssl/STAR_withcenter_com.ca-bundle')
     };
     app = server.createServer(options, serverHandler);
 } else app = server.createServer(serverHandler);
